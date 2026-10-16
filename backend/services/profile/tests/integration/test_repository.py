@@ -52,5 +52,6 @@ async def test_replacing_with_the_same_ids_is_safe(session):
     profile = await repository.get_or_create_profile(session, ALICE)
 
     await repository.replace_games(session, profile, [1, 2])
-    await repository.replace_games(session, profile, [1, 2])  # would hit the PK clash without the diff
+    # Without the diff logic, this second call would hit a primary-key clash
+    await repository.replace_games(session, profile, [1, 2])
     assert profile.game_ids == [1, 2]

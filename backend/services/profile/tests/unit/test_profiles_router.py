@@ -2,6 +2,7 @@ from app import repository
 
 # ---------- auth ----------
 
+
 def test_me_requires_identity_header(client, monkeypatch):
     called = False
 
@@ -24,6 +25,7 @@ def test_me_rejects_malformed_identity_header(client):
 
 # ---------- happy path ----------
 
+
 def test_get_me_uses_sub_from_header(client, auth_headers, monkeypatch, make_profile):
     seen = {}
 
@@ -40,7 +42,9 @@ def test_get_me_uses_sub_from_header(client, auth_headers, monkeypatch, make_pro
     assert r.json()["game_ids"] == [1, 3]  # sorted by the model
 
 
-def test_put_me_strips_whitespace_and_blanks_become_null(client, auth_headers, monkeypatch, make_profile):
+def test_put_me_strips_whitespace_and_blanks_become_null(
+    client, auth_headers, monkeypatch, make_profile
+):
     received = {}
 
     async def fake_get_or_create(session, user):
@@ -89,6 +93,7 @@ def test_set_games_dedupes_and_saves(client, auth_headers, monkeypatch, make_pro
 
 # ---------- error handling ----------
 
+
 def test_set_games_rejects_unknown_games(client, auth_headers, monkeypatch):
     called = False
 
@@ -105,7 +110,9 @@ def test_set_games_rejects_unknown_games(client, auth_headers, monkeypatch):
     assert called is False
 
 
-def test_set_games_returns_503_when_catalog_is_down(client, auth_headers, catalog_state, monkeypatch):
+def test_set_games_returns_503_when_catalog_is_down(
+    client, auth_headers, catalog_state, monkeypatch
+):
     catalog_state["down"] = True
     called = False
 
@@ -134,6 +141,7 @@ def test_put_me_rejects_bio_over_500_chars(client, auth_headers):
 
 
 # ---------- response formatting ----------
+
 
 def test_public_profile_hides_private_fields(client, auth_headers, monkeypatch, make_profile):
     async def fake_get(session, user_id):
