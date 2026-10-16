@@ -1,72 +1,82 @@
 name: catalog-service
 
 on:
-  push:
-    paths:
-      - "backend/services/catalog/**"
-      - "backend/libs/common/**"
-      - ".github/workflows/catalog.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "backend/services/catalog/**"
-      - "backend/libs/common/**"
-      - ".github/workflows/catalog.yml"
+    push:
+        branches: [main]
+        paths:
+            - "backend/services/catalog/**"
+            - "backend/libs/common/**"
+            - ".github/workflows/catalog.yml"
+    pull_request:
+        branches: [main]
+        paths:
+            - "backend/services/catalog/**"
+            - "backend/libs/common/**"
+            - ".github/workflows/catalog.yml"
+
+permissions:
+    contents: read
 
 concurrency:
-  group: catalog-${{ github.ref }}
-  cancel-in-progress: true
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    PYTHON_VERSION: "3.12"
 
 defaults:
-  run:
-    working-directory: backend/services/catalog
+    run:
+        working-directory: backend/services/catalog
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check .
-      - run: ruff format --check .
+    lint:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - run: pip install ruff==RUFF_VERSION
+            - run: ruff check .
+            - run: ruff format --check .
 
-  unit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          pip install uv
-          uv pip install --system -r pyproject.toml -r requirements-dev.txt
-      - name: Run unit tests
-        run: python -m pytest tests/unit -v --cov=app --cov-report=term-missing
+    unit:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - name: Install dependencies
+              run: |
+                  pip install uv
+                  uv pip install --system -r pyproject.toml -r requirements-dev.txt
+            - name: Run unit tests
+              run: python -m pytest tests/unit -v --cov=app --cov-report=term-missing
 
-  integration:
-    needs: unit
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest # Docker is preinstalled, so Testcontainers just works
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          pip install uv
-          uv pip install --system -r pyproject.toml -r requirements-dev.txt
-      - name: Run integration tests
-        run: python -m pytest -m integration -v
+    integration:
+        needs: unit
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - name: Install dependencies
+              run: |
+                  pip install uv
+                  uv pip install --system -r pyproject.toml -r requirements-dev.txt
+            - name: Run integration tests
+              run: python -m pytest -m integration -v
 
-  docker-build:
-    needs: unit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t catalog-service:ci .
+    docker-build:
+        needs: unit
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - name: Build image
+              run: docker build -t catalog-service:ci .

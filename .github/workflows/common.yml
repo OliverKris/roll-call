@@ -1,32 +1,44 @@
 name: common-lib
 
 on:
-  push:
-    paths:
-      - "backend/libs/common/**"
-      - ".github/workflows/common.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "backend/libs/common/**"
-      - ".github/workflows/common.yml"
+    push:
+        branches: [main]
+        paths:
+            - "backend/libs/common/**"
+            - ".github/workflows/common.yml"
+    pull_request:
+        branches: [main]
+        paths:
+            - "backend/libs/common/**"
+            - ".github/workflows/common.yml"
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    PYTHON_VERSION: "3.12"
 
 defaults:
-  run:
-    working-directory: backend/libs/common
+    run:
+        working-directory: backend/libs/common
 
 jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install
-        run: |
-          pip install uv
-          uv pip install --system . pytest httpx ruff
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: python -m pytest -v
+    lint-and-test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - name: Install
+              run: |
+                  pip install uv
+                  uv pip install --system . pytest httpx ruff==RUFF_VERSION
+            - run: ruff check .
+            - run: ruff format --check .
+            - run: python -m pytest -v
