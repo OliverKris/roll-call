@@ -11,6 +11,10 @@ upstreams:
     type: roundrobin
     nodes:
       "profile:8000": 1
+  - id: events
+    type: roundrobin
+    nodes:
+      "events:8000": 1
 
 plugin_configs:
   - id: require-login
@@ -55,6 +59,25 @@ routes:
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/profiles(.*)", "/profiles$1"]
+
+  - id: events-read
+    uris: [/api/v1/events, /api/v1/events/*]
+    methods: [GET]
+    upstream_id: events
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/events(.*)", "/events$1"]
+        headers:
+          remove: [X-Userinfo, X-Access-Token, X-ID-Token]
+
+  - id: events-write
+    uris: [/api/v1/events, /api/v1/events/*]
+    methods: [POST, PUT, PATCH, DELETE]
+    upstream_id: events
+    plugin_config_id: require-login
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/events(.*)", "/events$1"]
 
   # Debug only: shows exactly which headers a logged-in request carries. Remove later.
   - id: debug-headers
