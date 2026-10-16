@@ -38,7 +38,7 @@ jobs:
             - name: Install
               run: |
                   pip install uv
-                  uv pip install --system . pytest httpx ruff==RUFF_VERSION
+                  uv pip install --system . pytest httpx ruff==0.17.1
             - run: ruff check .
             - run: ruff format --check .
             - run: python -m pytest -v
