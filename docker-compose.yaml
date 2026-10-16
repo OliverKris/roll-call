@@ -1,0 +1,61 @@
+services:
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    container_name: apache-apisix
+    restart: always
+    environment:
+      - APISIX_STAND_ALONE=true
+    volumes:
+      - ./gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports:
+      - "9080:9080"
+    networks:
+      - api-net
+
+  catalog-db:
+    image: postgres:16-alpine
+    container_name: catalog-db
+    restart: always
+    environment:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+      POSTGRES_DB: catalog
+    volumes:
+      - catalog-db-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog -d catalog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - api-net
+
+  catalog:
+    build: ./backend/services/catalog
+    container_name: catalog-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://catalog:catalog@catalog-db:5432/catalog
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    networks:
+      - api-net
+
+  frontend:
+    build: ./frontend
+    container_name: react-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    networks:
+      - api-net
+
+volumes:
+  catalog-db-data:
+
+networks:
+  api-net:
+    driver: bridge

@@ -1,0 +1,51 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Type checkers and linters
+.mypy_cache/
+.ruff_cache/
+
+# ---------- Node / frontend ----------
+node_modules/
+frontend/dist/
+frontend/build/
+.next/
+.expo/
+.turbo/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Secrets and local config ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Editors and OS ----------
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+
+# ---------- Docker / local data ----------
+docker-compose.override.yml
+*.log

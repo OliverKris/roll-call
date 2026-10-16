@@ -1,0 +1,16 @@
+upstreams:
+  - id: catalog
+    type: roundrobin
+    nodes:
+      "catalog:8000": 1
+
+routes:
+  - id: catalog-games
+    uris:
+      - /api/v1/games
+      - /api/v1/games/*
+    upstream_id: catalog
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/games(.*)", "/games$1"]
+#END

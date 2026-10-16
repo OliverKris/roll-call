@@ -1,0 +1,70 @@
+name: catalog-service
+
+on:
+  push:
+    paths:
+      - "backend/services/catalog/**"
+      - ".github/workflows/catalog.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/services/catalog/**"
+      - ".github/workflows/catalog.yml"
+
+concurrency:
+  group: catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend/services/catalog
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install uv
+          uv pip install --system -r pyproject.toml -r requirements-dev.txt
+      - name: Run unit tests
+        run: python -m pytest tests/unit -v --cov=app --cov-report=term-missing
+
+  integration:
+    needs: unit
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest # Docker is preinstalled, so Testcontainers just works
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install uv
+          uv pip install --system -r pyproject.toml -r requirements-dev.txt
+      - name: Run integration tests
+        run: python -m pytest -m integration -v
+
+  docker-build:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t catalog-service:ci .
