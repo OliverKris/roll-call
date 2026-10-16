@@ -12,6 +12,39 @@ services:
     networks:
       - api-net
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    container_name: keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-roll-call.json:/opt/keycloak/data/import/realm-roll-call.json:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - api-net
+
+  httpbin: # debug helper: echoes back the headers it receives
+    image: mccutchen/go-httpbin
+    container_name: httpbin
+    networks:
+      - api-net
+
   catalog-db:
     image: postgres:16-alpine
     container_name: catalog-db
@@ -44,6 +77,43 @@ services:
     networks:
       - api-net
 
+  profile-db:
+    image: postgres:16-alpine
+    container_name: profile-db
+    restart: always
+    environment:
+      POSTGRES_USER: profile
+      POSTGRES_PASSWORD: profile
+      POSTGRES_DB: profile
+    volumes:
+      - profile-db-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile -d profile"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - api-net
+
+  profile:
+    build:
+      context: ./backend
+      dockerfile: services/profile/Dockerfile
+    container_name: profile-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://profile:profile@profile-db:5432/profile
+      CATALOG_URL: http://catalog:8000
+    depends_on:
+      profile-db:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+    networks:
+      - api-net
+
   frontend:
     build: ./frontend
     container_name: react-frontend
@@ -55,6 +125,7 @@ services:
 
 volumes:
   catalog-db-data:
+  profile-db-data:
 
 networks:
   api-net:

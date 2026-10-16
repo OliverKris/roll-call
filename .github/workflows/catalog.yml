@@ -4,11 +4,13 @@ on:
   push:
     paths:
       - "backend/services/catalog/**"
+      - "backend/libs/common/**"
       - ".github/workflows/catalog.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/services/catalog/**"
+      - "backend/libs/common/**"
       - ".github/workflows/catalog.yml"
 
 concurrency:

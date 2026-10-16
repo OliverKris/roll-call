@@ -3,14 +3,66 @@ upstreams:
     type: roundrobin
     nodes:
       "catalog:8000": 1
+  - id: httpbin
+    type: roundrobin
+    nodes:
+      "httpbin:8080": 1
+  - id: profile
+    type: roundrobin
+    nodes:
+      "profile:8000": 1
+
+plugin_configs:
+  - id: require-login
+    plugins:
+      openid-connect:
+        client_id: apisix
+        client_secret: apisix-dev-secret
+        discovery: http://keycloak:8080/realms/roll-call/.well-known/openid-configuration
+        bearer_only: true # API mode: expect a Bearer token, never redirect to a login page
+        use_jwks: true # verify signatures locally with Keycloak's public keys
+        realm: roll-call
+        set_userinfo_header: true # forward verified claims to the service
+        set_access_token_header: true
+        set_id_token_header: false
 
 routes:
-  - id: catalog-games
-    uris:
-      - /api/v1/games
-      - /api/v1/games/*
+  # Public reads. Strip identity headers so a client can't fake being logged in.
+  - id: catalog-games-read
+    uris: [/api/v1/games, /api/v1/games/*]
+    methods: [GET]
     upstream_id: catalog
     plugins:
       proxy-rewrite:
         regex_uri: ["^/api/v1/games(.*)", "/games$1"]
+        headers:
+          remove: [X-Userinfo, X-Access-Token, X-ID-Token]
+
+  # Writes require a valid Keycloak token.
+  - id: catalog-games-write
+    uris: [/api/v1/games, /api/v1/games/*]
+    methods: [POST, PUT, PATCH, DELETE]
+    upstream_id: catalog
+    plugin_config_id: require-login
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/games(.*)", "/games$1"]
+
+  - id: profiles
+    uris: [/api/v1/profiles, /api/v1/profiles/*]
+    upstream_id: profile
+    plugin_config_id: require-login
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/profiles(.*)", "/profiles$1"]
+
+  # Debug only: shows exactly which headers a logged-in request carries. Remove later.
+  - id: debug-headers
+    uri: /api/v1/debug/headers
+    methods: [GET]
+    upstream_id: httpbin
+    plugin_config_id: require-login
+    plugins:
+      proxy-rewrite:
+        uri: /headers
 #END

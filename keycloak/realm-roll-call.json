@@ -1,0 +1,38 @@
+{
+    "realm": "roll-call",
+    "enabled": true,
+    "sslRequired": "none",
+    "registrationAllowed": true,
+    "accessTokenLifespan": 900,
+    "clients": [
+        {
+            "clientId": "roll-call-web",
+            "publicClient": true,
+            "standardFlowEnabled": true,
+            "directAccessGrantsEnabled": true,
+            "redirectUris": ["http://localhost:3000/*"],
+            "webOrigins": ["http://localhost:3000"],
+            "attributes": { "pkce.code.challenge.method": "S256" }
+        },
+        {
+            "clientId": "apisix",
+            "publicClient": false,
+            "secret": "apisix-dev-secret",
+            "standardFlowEnabled": false,
+            "directAccessGrantsEnabled": false
+        }
+    ],
+    "users": [
+        {
+            "username": "alice",
+            "enabled": true,
+            "email": "alice@example.com",
+            "emailVerified": true,
+            "firstName": "Alice",
+            "lastName": "Tester",
+            "credentials": [
+                { "type": "password", "value": "alice", "temporary": false }
+            ]
+        }
+    ]
+}
