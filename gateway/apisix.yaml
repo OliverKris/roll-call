@@ -60,8 +60,9 @@ routes:
       proxy-rewrite:
         regex_uri: ["^/api/v1/profiles(.*)", "/profiles$1"]
 
+  # Public reads: nearby search and event details.
   - id: events-read
-    uris: [/api/v1/events, /api/v1/events/*]
+    uris: [/api/v1/events/*]
     methods: [GET]
     upstream_id: events
     plugins:
@@ -69,6 +70,19 @@ routes:
         regex_uri: ["^/api/v1/events(.*)", "/events$1"]
         headers:
           remove: [X-Userinfo, X-Access-Token, X-ID-Token]
+
+  # Private reads: "my events" and "my RSVP". Checked first because of the higher priority.
+  - id: events-read-private
+    uris: [/api/v1/events/mine, /api/v1/events/*]
+    methods: [GET]
+    priority: 10
+    vars:
+      - ["uri", "~~", "^/api/v1/events/(mine|[0-9]+/rsvp)$"]
+    upstream_id: events
+    plugin_config_id: require-login
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/v1/events(.*)", "/events$1"]
 
   - id: events-write
     uris: [/api/v1/events, /api/v1/events/*]

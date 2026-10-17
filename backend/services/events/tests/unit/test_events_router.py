@@ -152,3 +152,21 @@ def test_leave_returns_204(client, auth_headers, monkeypatch):
 def test_host_cannot_leave(client, auth_headers, monkeypatch):
     stub(monkeypatch, "leave_event", raises=HostCannotLeaveError(1))
     assert client.delete("/events/1/rsvp", headers=auth_headers).status_code == 409
+
+
+def test_my_events_requires_login(client):
+    assert client.get("/events/mine").status_code == 401
+
+
+def test_my_events_include_my_status(client, auth_headers, monkeypatch, make_event):
+    stub(monkeypatch, "list_user_events", result=[(make_event(), "waitlisted")])
+
+    r = client.get("/events/mine", headers=auth_headers)
+
+    assert r.status_code == 200
+    assert r.json()[0]["my_status"] == "waitlisted"
+
+
+def test_my_rsvp_404_when_not_joined(client, auth_headers, monkeypatch):
+    stub(monkeypatch, "get_rsvp", result=None)
+    assert client.get("/events/1/rsvp", headers=auth_headers).status_code == 404

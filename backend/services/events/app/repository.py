@@ -149,3 +149,21 @@ async def leave_event(session: AsyncSession, event_id: int, user_id: str) -> Non
             await session.rollback()
 
     raise TooMuchContentionError(event_id)
+
+
+async def get_rsvp(session: AsyncSession, event_id: int, user_id: str) -> models.Rsvp | None:
+    return await session.get(models.Rsvp, (event_id, user_id))
+
+
+async def list_user_events(
+    session: AsyncSession, user_id: str
+) -> Sequence[tuple[models.Event, str]]:
+    """Upcoming events the user hosts, is going to, or is waitlisted for."""
+    stmt = (
+        select(models.Event, models.Rsvp.status)
+        .join(models.Rsvp, models.Rsvp.event_id == models.Event.id)
+        .where(models.Rsvp.user_id == user_id, models.Event.starts_at >= func.now())
+        .order_by(models.Event.starts_at)
+    )
+    result = await session.execute(stmt)
+    return [(event, status) for event, status in result.all()]

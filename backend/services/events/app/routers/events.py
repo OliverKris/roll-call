@@ -14,7 +14,7 @@ from app.repository import (
     HostCannotLeaveError,
     TooMuchContentionError,
 )
-from app.schemas.event import EventCreate, EventOut, NearbyEvent, RsvpOut
+from app.schemas.event import EventCreate, EventOut, MyEvent, NearbyEvent, RsvpOut
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -59,12 +59,29 @@ async def nearby_events(
     ]
 
 
+@router.get("/mine", response_model=list[MyEvent])
+async def my_events(user: UserDep, session: SessionDep):
+    rows = await repository.list_user_events(session, user.sub)
+    return [
+        MyEvent(**EventOut.model_validate(event).model_dump(), my_status=status_)
+        for event, status_ in rows
+    ]
+
+
 @router.get("/{event_id}", response_model=EventOut)
 async def get_event(event_id: int, session: SessionDep):
     event = await repository.get_event(session, event_id)
     if event is None:
         raise NOT_FOUND
     return event
+
+
+@router.get("/{event_id}/rsvp", response_model=RsvpOut)
+async def get_my_rsvp(event_id: int, user: UserDep, session: SessionDep):
+    rsvp = await repository.get_rsvp(session, event_id, user.sub)
+    if rsvp is None:
+        raise HTTPException(status_code=404, detail="You haven't RSVPed to this event")
+    return rsvp
 
 
 @router.post("/{event_id}/rsvp", response_model=RsvpOut)
