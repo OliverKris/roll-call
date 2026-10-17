@@ -148,3 +148,15 @@ async def test_two_people_racing_for_the_last_seat(committing_sessions):
     assert statuses == ["going", "waitlisted"]
     async with committing_sessions() as check:
         assert (await reload(check, event_id)).seats_taken == 2
+
+
+async def test_list_user_events_returns_only_my_events(session):
+    mine = await repository.create_event(session, "alice", event_data(title="Mine"))
+    joined = await repository.create_event(session, "bob", event_data(title="Joined"))
+    await repository.create_event(session, "carol", event_data(title="Not mine"))
+    await repository.join_event(session, joined.id, "alice")
+
+    rows = await repository.list_user_events(session, "alice")
+
+    assert {(e.title, s) for e, s in rows} == {("Mine", "going"), ("Joined", "going")}
+    assert mine.id in {e.id for e, _ in rows}

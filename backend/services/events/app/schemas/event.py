@@ -58,3 +58,7 @@ class RsvpOut(BaseModel):
     user_id: str
     status: str
     joined_at: datetime
+
+
+class MyEvent(EventOut):
+    my_status: str

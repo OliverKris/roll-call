@@ -1,10 +1,16 @@
 // https://docs.expo.dev/guides/using-eslint/
-const { defineConfig } = require('eslint/config');
-const expoConfig = require('eslint-config-expo/flat');
+const { defineConfig } = require("eslint/config");
+const expoConfig = require("eslint-config-expo/flat");
 
 module.exports = defineConfig([
-  expoConfig,
-  {
-    ignores: ['dist/*'],
-  },
+    expoConfig,
+    {
+        ignores: ["dist/*"],
+    },
+    {
+        // TypeScript (tsc --noEmit) already checks that every import resolves
+        rules: {
+            "import/no-unresolved": "off",
+        },
+    },
 ]);

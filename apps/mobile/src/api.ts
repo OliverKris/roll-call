@@ -18,6 +18,44 @@ export type Profile = {
     updated_at: string;
 };
 
+export type EventSummary = {
+    id: number;
+    host_user_id: string;
+    title: string;
+    description: string | null;
+    game_id: number;
+    starts_at: string;
+    location_name: string;
+    latitude: number;
+    longitude: number;
+    capacity: number;
+    seats_taken: number;
+    seats_left: number;
+    status: string;
+    created_at: string;
+};
+
+export type RsvpStatus = "going" | "waitlisted";
+export type NearbyEvent = EventSummary & { distance_km: number };
+export type MyEvent = EventSummary & { my_status: RsvpStatus };
+export type Rsvp = {
+    event_id: number;
+    user_id: string;
+    status: RsvpStatus;
+    joined_at: string;
+};
+
+export type NewEvent = {
+    title: string;
+    description?: string;
+    game_id: number;
+    starts_at: string;
+    location_name: string;
+    latitude: number;
+    longitude: number;
+    capacity: number;
+};
+
 export class ApiError extends Error {
     constructor(
         public status: number,
@@ -27,48 +65,11 @@ export class ApiError extends Error {
     }
 }
 
-export type LogEntry = {
-    method: string;
-    url: string;
-    status: number | "ERR";
-    ms: number;
+type Options = {
+    token?: string | null;
+    json?: unknown;
+    form?: Record<string, string>;
 };
-
-let listener: ((entry: LogEntry) => void) | null = null;
-
-/** Subscribe to every request the app makes, for the on-screen log. */
-export function onRequest(fn: (entry: LogEntry) => void) {
-    listener = fn;
-}
-
-async function request<T>(
-    method: string,
-    url: string,
-    init: RequestInit = {},
-): Promise<T> {
-    const started = Date.now();
-    let res: Response;
-    try {
-        res = await fetch(url, { method, ...init });
-    } catch (e) {
-        listener?.({ method, url, status: "ERR", ms: Date.now() - started });
-        throw new ApiError(0, String(e));
-    }
-    listener?.({ method, url, status: res.status, ms: Date.now() - started });
-
-    const text = await res.text();
-    let body: unknown = text;
-    try {
-        body = text ? JSON.parse(text) : null;
-    } catch {
-        // Not JSON, e.g. APISIX's HTML 401 page; keep the raw text
-    }
-    if (!res.ok) throw new ApiError(res.status, body);
-    return body as T;
-}
-
-const auth = (token?: string): Record<string, string> =>
-    token ? { Authorization: `Bearer ${token}` } : {};
 
 function formEncode(data: Record<string, string>): string {
     return Object.entries(data)
@@ -76,51 +77,153 @@ function formEncode(data: Record<string, string>): string {
         .join("&");
 }
 
-export async function login(
-    username: string,
-    password: string,
-): Promise<string> {
-    const data = await request<{ access_token: string }>(
+async function request<T>(
+    method: string,
+    url: string,
+    { token, json, form }: Options = {},
+): Promise<T> {
+    const headers: Record<string, string> = {};
+    let body: string | undefined;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (json !== undefined) {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(json);
+    }
+    if (form) {
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+        body = formEncode(form);
+    }
+
+    let res: Response;
+    try {
+        res = await fetch(url, { method, headers, body });
+    } catch (e) {
+        throw new ApiError(0, String(e));
+    }
+    if (res.status === 204) return undefined as T;
+
+    const text = await res.text();
+    let parsed: unknown = text;
+    try {
+        parsed = text ? JSON.parse(text) : null;
+    } catch {
+        // Non-JSON body, e.g. the gateway's HTML error pages
+    }
+    if (!res.ok) throw new ApiError(res.status, parsed);
+    return parsed as T;
+}
+
+const api = (path: string) => `${API_URL}${path}`;
+
+// ---------- auth ----------
+
+export const login = (username: string, password: string) =>
+    request<{ access_token: string; expires_in: number }>(
         "POST",
         `${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/token`,
         {
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: formEncode({
+            form: {
                 grant_type: "password",
                 client_id: CLIENT_ID,
                 username,
                 password,
                 scope: "openid",
-            }),
+            },
         },
     );
-    return data.access_token;
+
+// ---------- catalog ----------
+
+export const listGames = () => request<Game[]>("GET", api("/games"));
+
+// ---------- events ----------
+
+export const nearbyEvents = (lat: number, lng: number, radiusKm: number) =>
+    request<NearbyEvent[]>(
+        "GET",
+        api(`/events/nearby?lat=${lat}&lng=${lng}&radius_km=${radiusKm}`),
+    );
+
+export const getEvent = (id: number) =>
+    request<EventSummary>("GET", api(`/events/${id}`));
+
+export const createEvent = (token: string, data: NewEvent) =>
+    request<EventSummary>("POST", api("/events"), { token, json: data });
+
+export async function getMyRsvp(
+    token: string,
+    id: number,
+): Promise<Rsvp | null> {
+    try {
+        return await request<Rsvp>("GET", api(`/events/${id}/rsvp`), { token });
+    } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+    }
 }
 
-export const listGames = () => request<Game[]>("GET", `${API_URL}/games`);
+export const joinEvent = (token: string, id: number) =>
+    request<Rsvp>("POST", api(`/events/${id}/rsvp`), { token });
 
-export const getMyProfile = (token?: string) =>
-    request<Profile>("GET", `${API_URL}/profiles/me`, { headers: auth(token) });
+export const leaveEvent = (token: string, id: number) =>
+    request<void>("DELETE", api(`/events/${id}/rsvp`), { token });
+
+export const myEvents = (token: string) =>
+    request<MyEvent[]>("GET", api("/events/mine"), { token });
+
+// ---------- profile ----------
+
+export const getMyProfile = (token: string) =>
+    request<Profile>("GET", api("/profiles/me"), { token });
+
+export const updateMyProfile = (
+    token: string,
+    data: {
+        display_name: string;
+        home_area: string | null;
+        bio: string | null;
+    },
+) => request<Profile>("PUT", api("/profiles/me"), { token, json: data });
 
 export const setMyGames = (token: string, gameIds: number[]) =>
-    request<Profile>("PUT", `${API_URL}/profiles/me/games`, {
-        headers: { ...auth(token), "Content-Type": "application/json" },
-        body: JSON.stringify({ game_ids: gameIds }),
+    request<Profile>("PUT", api("/profiles/me/games"), {
+        token,
+        json: { game_ids: gameIds },
     });
+
+// ---------- errors ----------
+
+function detailMessage(d: unknown): string {
+    if (typeof d === "string") {
+        return d
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 160);
+    }
+    if (d && typeof d === "object" && "detail" in d) {
+        const inner = (d as { detail: unknown }).detail;
+        if (typeof inner === "string") return inner;
+        if (Array.isArray(inner)) {
+            return inner
+                .map((x) => (x as { msg?: string }).msg ?? "")
+                .filter(Boolean)
+                .join("; ");
+        }
+        if (inner && typeof inner === "object" && "message" in inner) {
+            return String((inner as { message: unknown }).message);
+        }
+    }
+    return JSON.stringify(d);
+}
 
 export function describeError(e: unknown): string {
     if (e instanceof ApiError) {
         if (e.status === 0)
-            return "Can't reach the server. Check the URL in .env and your Wi-Fi.";
-        const detail =
-            typeof e.detail === "string"
-                ? e.detail
-                      .replace(/<[^>]+>/g, " ")
-                      .replace(/\s+/g, " ")
-                      .trim()
-                      .slice(0, 120)
-                : JSON.stringify(e.detail);
-        return `${e.status}: ${detail}`;
+            return "Can't reach the server. Check your connection and the URL in .env.";
+        if (e.status === 401)
+            return "Your session expired. Please sign in again.";
+        return detailMessage(e.detail);
     }
     return e instanceof Error ? e.message : String(e);
 }
