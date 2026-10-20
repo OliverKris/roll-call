@@ -1,113 +1,94 @@
 import { Redirect } from "expo-router";
-import { useState } from "react";
-import {
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    View,
-} from "react-native";
+import { useRef, useState } from "react";
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { describeError } from "../src/api";
+import { ApiError, describeError } from "../src/api";
 import { useAuth } from "../src/auth";
-import { Banner, Button, Chip, ChipRow, Field, Muted } from "../src/components";
-import { colors } from "../src/theme";
-import { Ionicons } from "@expo/vector-icons";
+import { SeatTokens } from "../src/SeatTokens";
+import { colors, fonts, space, type } from "../src/theme";
+import { Button, Field, Notice, PasswordField, type TextInputHandle } from "../src/ui";
 
-const TEST_ACCOUNTS = ["alice", "bob", "carol"];
+function loginError(e: unknown): string {
+  // Keycloak answers a wrong username or password with 400 or 401
+  if (e instanceof ApiError && (e.status === 400 || e.status === 401)) {
+    return "That username and password don't match. Check them and try again.";
+  }
+  return describeError(e);
+}
 
 export default function Login() {
-    const { token, ready, signIn } = useAuth();
-    const [username, setUsername] = useState("alice");
-    const [password, setPassword] = useState("alice");
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const { token, ready, signIn } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<TextInputHandle>(null);
 
-    if (ready && token) return <Redirect href="/" />;
+  if (ready && token) return <Redirect href="/" />;
 
-    const submit = async () => {
-        setBusy(true);
-        setError(null);
-        try {
-            await signIn(username.trim(), password);
-        } catch (e) {
-            setError(describeError(e));
-        } finally {
-            setBusy(false);
-        }
-    };
+  const canSubmit = username.trim().length > 0 && password.length > 0;
 
-    return (
-        <SafeAreaView style={styles.safe}>
-            <KeyboardAvoidingView
-                style={styles.wrap}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
-                <View style={styles.hero}>
-                    <View style={styles.logoTile}>
-                        <Ionicons name="dice" size={44} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.title}>Roll Call</Text>
-                    <Muted>Find people near you who want to play.</Muted>
-                </View>
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await signIn(username.trim(), password);
+    } catch (e) {
+      setError(loginError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-                <Banner text={error} />
+  return (
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.wrap}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.brand}>
+          <SeatTokens taken={3} capacity={4} size="lg" />
+          <Text style={styles.wordmark}>Roll Call</Text>
+          <Text style={styles.tagline}>{"There's a seat at the table for you."}</Text>
+        </View>
 
-                <Field
-                    label="Username"
-                    value={username}
-                    onChangeText={setUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                />
-                <Field
-                    label="Password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                />
-                <Button label="Sign in" onPress={submit} loading={busy} />
-
-                <View style={styles.test}>
-                    <Muted>Test accounts</Muted>
-                    <ChipRow>
-                        {TEST_ACCOUNTS.map((u) => (
-                            <Chip
-                                key={u}
-                                label={u}
-                                selected={username === u}
-                                onPress={() => {
-                                    setUsername(u);
-                                    setPassword(u);
-                                }}
-                            />
-                        ))}
-                    </ChipRow>
-                </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
+        <View style={styles.form}>
+          <Notice text={error} />
+          <Field
+            label="Username or email"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="username"
+            textContentType="username"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+          />
+          <PasswordField
+            ref={passwordRef}
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            autoComplete="current-password"
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={submit}
+          />
+          <Button label="Sign in" onPress={submit} loading={busy} disabled={!canSubmit} />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
-    wrap: { flex: 1, padding: 24, gap: 14, justifyContent: "center" },
-    hero: { alignItems: "center", gap: 6, marginBottom: 16 },
-    logoTile: {
-        width: 84,
-        height: 84,
-        borderRadius: 24,
-        backgroundColor: colors.primary,
-        alignItems: "center",
-        justifyContent: "center",
-        marginBottom: 8,
-        shadowColor: colors.primary,
-        shadowOpacity: 0.25,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 6,
-    },
-    title: { fontSize: 30, fontWeight: "700", color: colors.text },
-    test: { gap: 8, marginTop: 16 },
+  safe: { flex: 1, backgroundColor: colors.paper },
+  wrap: { flex: 1, paddingHorizontal: space.xl, justifyContent: "center", gap: 40 },
+  brand: { gap: space.md },
+  wordmark: { fontFamily: fonts.display, fontSize: 44, lineHeight: 48, letterSpacing: -1, color: colors.ink },
+  tagline: { ...type.body, color: colors.slate },
+  form: { gap: space.lg },
 });
