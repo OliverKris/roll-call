@@ -5,9 +5,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ApiError, describeError } from "../src/api";
 import { useAuth } from "../src/auth";
-import { SeatTokens } from "../src/SeatTokens";
-import { colors, fonts, space, type } from "../src/theme";
-import { Button, Field, Notice, PasswordField, type TextInputHandle } from "../src/ui";
+import { TableView } from "../src/SeatTokens";
+import { colors, space, type } from "../src/theme";
+import { Button, Field, Notice, PasswordField, Wordmark, type TextInputHandle } from "../src/ui";
 
 function loginError(e: unknown): string {
   // Keycloak answers a wrong username or password with 400 or 401
@@ -49,9 +49,11 @@ export default function Login() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.brand}>
-          <SeatTokens taken={3} capacity={4} size="lg" />
-          <Text style={styles.wordmark}>Roll Call</Text>
-          <Text style={styles.tagline}>{"There's a seat at the table for you."}</Text>
+          <Wordmark size={40} />
+          <Text style={styles.tagline}>{"Find a seat at a board-game night near you, or host your own."}</Text>
+          <View style={styles.table}>
+            <TableView taken={5} capacity={6} />
+          </View>
         </View>
 
         <View style={styles.form}>
@@ -85,10 +87,10 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.paper },
+  safe: { flex: 1, backgroundColor: colors.ground },
   wrap: { flex: 1, paddingHorizontal: space.xl, justifyContent: "center", gap: 40 },
   brand: { gap: space.md },
-  wordmark: { fontFamily: fonts.display, fontSize: 44, lineHeight: 48, letterSpacing: -1, color: colors.ink },
-  tagline: { ...type.body, color: colors.slate },
+  tagline: { ...type.body, color: colors.muted },
+  table: { marginTop: space.lg },
   form: { gap: space.lg },
 });

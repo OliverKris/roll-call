@@ -9,19 +9,20 @@ import {
   Text,
   TextInput,
   View,
+  type DimensionValue,
   type TextInputProps,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { initials } from "./format";
-import { colors, fonts, pieceFor, radius, space, type } from "./theme";
+import { colors, fonts, radius, space, type } from "./theme";
 
 export type IconName = ComponentProps<typeof Ionicons>["name"];
 export type Tone = "neutral" | "positive" | "waiting" | "danger";
 
-const toneColors: Record<Tone, { bg: string; fg: string }> = {
-  neutral: { bg: colors.paper, fg: colors.slate },
-  positive: { bg: colors.positiveSoft, fg: colors.positive },
+const tones: Record<Tone, { bg: string; fg: string }> = {
+  neutral: { bg: colors.raised, fg: colors.text },
+  positive: { bg: colors.seatSoft, fg: colors.seat },
   waiting: { bg: colors.waitingSoft, fg: colors.waiting },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
 };
@@ -29,8 +30,9 @@ const toneColors: Record<Tone, { bg: string; fg: string }> = {
 // ---------- layout ----------
 
 /**
- * A scrolling screen. `topInset` adds the status-bar safe area for screens
- * without a navigation header. `footer` stays pinned above the home indicator.
+ * A scrolling screen on the ground colour. `topInset` adds the status-bar
+ * safe area for screens without a navigation header. `footer` stays pinned
+ * above the home indicator.
  */
 export function Screen({
   children,
@@ -50,8 +52,11 @@ export function Screen({
       <ScrollView
         contentContainerStyle={styles.screenContent}
         keyboardShouldPersistTaps="handled"
+        indicatorStyle="white"
         refreshControl={
-          onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.muted} />
+          ) : undefined
         }
       >
         {children}
@@ -65,50 +70,68 @@ export function Screen({
   );
 }
 
-export function LargeTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+/** The product's name, set in its own face. Used once, at the top of Discover and on sign-in. */
+export function Wordmark({ size = 20 }: { size?: number }) {
   return (
-    <View style={styles.largeTitle}>
-      <Text style={styles.display} accessibilityRole="header">
-        {title}
-      </Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-    </View>
+    <Text style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.15 }]} accessibilityRole="header">
+      Roll Call
+    </Text>
   );
 }
 
-export function Section({
+/** The screen's noun title, the one line that answers its question, and at most one action. */
+export function ScreenTitle({
   title,
+  subtitle,
   action,
-  children,
 }: {
   title: string;
+  subtitle?: ReactNode;
   action?: { label: string; onPress: () => void };
-  children: ReactNode;
 }) {
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.heading} accessibilityRole="header">
+    <View style={styles.titleRow}>
+      <View style={styles.flex}>
+        <Text style={styles.title} accessibilityRole="header">
           {title}
         </Text>
-        {action ? (
-          <Pressable onPress={action.onPress} hitSlop={8}>
-            <Text style={styles.sectionAction}>{action.label}</Text>
-          </Pressable>
-        ) : null}
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
-      {children}
+      {action ? <TextButton label={action.label} onPress={action.onPress} /> : null}
     </View>
   );
 }
 
-/** A white group with hairline separators between its children. */
-export function Group({ children }: { children: ReactNode }) {
-  return <View style={styles.group}>{children}</View>;
+/** A small grey label over a card, with an optional text action on the right. */
+export function SectionLabel({
+  label,
+  action,
+}: {
+  label: string;
+  action?: { label: string; onPress: () => void };
+}) {
+  return (
+    <View style={styles.sectionLabel}>
+      <Text style={styles.sectionLabelText} accessibilityRole="header">
+        {label}
+      </Text>
+      {action ? <TextButton label={action.label} onPress={action.onPress} /> : null}
+    </View>
+  );
 }
 
-export function Divider({ inset = 0 }: { inset?: number }) {
-  return <View style={[styles.divider, { marginLeft: inset }]} />;
+export function Section({ children }: { children: ReactNode }) {
+  return <View style={styles.section}>{children}</View>;
+}
+
+/** A surface one step lighter than the ground. No border, no shadow. */
+export function Card({ children, padded = false }: { children: ReactNode; padded?: boolean }) {
+  return <View style={[styles.card, padded && styles.cardPadded]}>{children}</View>;
+}
+
+/** A 1px rule between rows of a card. */
+export function Rule({ inset = 0 }: { inset?: number }) {
+  return <View style={[styles.rule, { marginLeft: inset }]} />;
 }
 
 // ---------- text ----------
@@ -117,16 +140,16 @@ export function Body({ children, muted }: { children: ReactNode; muted?: boolean
   return <Text style={[styles.body, muted && styles.muted]}>{children}</Text>;
 }
 
-export function Caption({ children }: { children: ReactNode }) {
-  return <Text style={styles.caption}>{children}</Text>;
+export function Meta({ children }: { children: ReactNode }) {
+  return <Text style={styles.meta}>{children}</Text>;
 }
 
 // ---------- controls ----------
 
 const buttonVariants = {
-  primary: { bg: colors.ink, fg: colors.surface, border: colors.ink },
-  secondary: { bg: colors.surface, fg: colors.ink, border: colors.lineStrong },
-  destructive: { bg: colors.surface, fg: colors.danger, border: colors.lineStrong },
+  primary: { bg: colors.primary, fg: colors.onPrimary },
+  secondary: { bg: colors.raised, fg: colors.text },
+  destructive: { bg: colors.raised, fg: colors.danger },
 };
 
 export function Button({
@@ -153,7 +176,7 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: v.bg, borderColor: v.border },
+        { backgroundColor: v.bg },
         pressed && styles.pressed,
         disabled && styles.disabled,
       ]}
@@ -170,38 +193,66 @@ export function Button({
   );
 }
 
-export function Pill({
+export function TextButton({
+  label,
+  onPress,
+  tone = "neutral",
+}: {
+  label: string;
+  onPress: () => void;
+  tone?: "neutral" | "danger";
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      hitSlop={12}
+      style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
+    >
+      <Text style={[styles.textButtonLabel, tone === "danger" && { color: colors.danger }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** A filter or choice. Selected chips invert to white; a count sits inside when given. */
+export function Chip({
   label,
   selected,
   onPress,
   icon,
+  count,
 }: {
   label: string;
   selected?: boolean;
   onPress: () => void;
   icon?: IconName;
+  count?: number;
 }) {
-  const fg = selected ? colors.surface : colors.ink;
+  const fg = selected ? colors.onPrimary : colors.text;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
+      accessibilityLabel={count === undefined ? label : `${label}, ${count}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.pill, selected && styles.pillOn, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.chip, selected && styles.chipOn, pressed && styles.pressed]}
     >
       {icon ? <Ionicons name={icon} size={15} color={fg} /> : null}
-      <Text style={[styles.pillLabel, { color: fg }]}>{label}</Text>
+      <Text style={[styles.chipLabel, { color: fg }]}>{label}</Text>
+      {count !== undefined ? (
+        <Text style={[styles.chipCount, { color: selected ? colors.onPrimary : colors.muted }]}>{count}</Text>
+      ) : null}
     </Pressable>
   );
 }
 
-/** A single row of pills that scrolls sideways. */
-export function PillScroller({ children }: { children: ReactNode }) {
+/** One row of chips that scrolls sideways inside its own row, never the page. */
+export function ChipScroller({ children }: { children: ReactNode }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.pillScroller}
+      contentContainerStyle={styles.chipScroller}
       style={styles.bleed}
     >
       {children}
@@ -209,9 +260,8 @@ export function PillScroller({ children }: { children: ReactNode }) {
   );
 }
 
-/** Pills that wrap onto several lines. */
-export function PillWrap({ children }: { children: ReactNode }) {
-  return <View style={styles.pillWrap}>{children}</View>;
+export function ChipWrap({ children }: { children: ReactNode }) {
+  return <View style={styles.chipWrap}>{children}</View>;
 }
 
 export function Segmented<T extends string | number>({
@@ -256,6 +306,8 @@ export function Field({ label, hint, ref, ...props }: FieldProps) {
       <TextInput
         ref={ref}
         placeholderTextColor={colors.faint}
+        selectionColor={colors.text}
+        keyboardAppearance="dark"
         {...props}
         style={[styles.input, focused && styles.inputFocused, props.multiline && styles.inputMultiline]}
         onFocus={(e) => {
@@ -267,7 +319,7 @@ export function Field({ label, hint, ref, ...props }: FieldProps) {
           props.onBlur?.(e);
         }}
       />
-      {hint ? <Text style={styles.caption}>{hint}</Text> : null}
+      {hint ? <Text style={styles.meta}>{hint}</Text> : null}
     </View>
   );
 }
@@ -284,7 +336,7 @@ export function PasswordField(props: Omit<FieldProps, "hint">) {
         accessibilityLabel={visible ? "Hide password" : "Show password"}
         style={styles.reveal}
       >
-        <Ionicons name={visible ? "eye-off-outline" : "eye-outline"} size={20} color={colors.slate} />
+        <Ionicons name={visible ? "eye-off-outline" : "eye-outline"} size={20} color={colors.muted} />
       </Pressable>
     </View>
   );
@@ -295,11 +347,13 @@ export function Stepper({
   min,
   max,
   onChange,
+  noun = "seat",
 }: {
   value: number;
   min: number;
   max: number;
   onChange: (v: number) => void;
+  noun?: string;
 }) {
   const step = (d: number) => onChange(Math.min(max, Math.max(min, value + d)));
   return (
@@ -308,238 +362,254 @@ export function Stepper({
         onPress={() => step(-1)}
         disabled={value <= min}
         accessibilityRole="button"
-        accessibilityLabel="One fewer seat"
-        style={[styles.stepButton, value <= min && styles.disabled]}
+        accessibilityLabel={`One fewer ${noun}`}
+        style={({ pressed }) => [styles.stepButton, value <= min && styles.disabled, pressed && styles.pressed]}
       >
-        <Ionicons name="remove" size={20} color={colors.ink} />
+        <Ionicons name="remove" size={20} color={colors.text} />
       </Pressable>
       <Text style={styles.stepValue}>{value}</Text>
       <Pressable
         onPress={() => step(1)}
         disabled={value >= max}
         accessibilityRole="button"
-        accessibilityLabel="One more seat"
-        style={[styles.stepButton, value >= max && styles.disabled]}
+        accessibilityLabel={`One more ${noun}`}
+        style={({ pressed }) => [styles.stepButton, value >= max && styles.disabled, pressed && styles.pressed]}
       >
-        <Ionicons name="add" size={20} color={colors.ink} />
+        <Ionicons name="add" size={20} color={colors.text} />
       </Pressable>
     </View>
   );
 }
 
-// ---------- feedback ----------
+// ---------- status and feedback ----------
 
+/** A status beside a value or inside a row: a dark tint with text of the same hue. */
+export function Pill({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
+  const t = tones[tone];
+  return (
+    <View style={[styles.pill, { backgroundColor: t.bg }]}>
+      <Text style={[styles.pillLabel, { color: t.fg }]}>{label}</Text>
+    </View>
+  );
+}
+
+/** A confirmation or a problem that isn't tied to one block. */
 export function Notice({ text, tone = "danger" }: { text: string | null; tone?: Tone }) {
   if (!text) return null;
-  const t = toneColors[tone];
+  const t = tones[tone];
   const icon: IconName =
-    tone === "danger" ? "alert-circle" : tone === "positive" ? "checkmark-circle" : "information-circle";
+    tone === "danger" ? "alert-circle-outline" : tone === "positive" ? "checkmark-circle-outline" : "information-circle-outline";
   return (
-    <View style={[styles.notice, { backgroundColor: t.bg }]} accessibilityRole="alert">
+    <View style={styles.notice} accessibilityRole="alert">
       <Ionicons name={icon} size={18} color={t.fg} />
-      <Text style={[styles.noticeText, { color: t.fg }]}>{text}</Text>
+      <Text style={styles.noticeText}>{text}</Text>
     </View>
   );
 }
 
-export function Tag({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
-  const t = toneColors[tone];
+/** A block that failed to load: what failed, and a way to try again. Shown inside the block. */
+export function BlockError({ text, onRetry }: { text: string; onRetry: () => void }) {
   return (
-    <View style={[styles.tag, { backgroundColor: t.bg }]}>
-      <Text style={[styles.tagLabel, { color: t.fg }]}>{label}</Text>
+    <View style={styles.blockError} accessibilityRole="alert">
+      <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+      <Text style={styles.blockErrorText}>{text}</Text>
+      <TextButton label="Retry" onPress={onRetry} />
     </View>
   );
 }
 
-export function EmptyState({
-  icon,
-  title,
-  body,
+/** An empty block keeps its frame: one sentence, and the next step when there is one. */
+export function EmptyBlock({
+  text,
   action,
 }: {
-  icon: IconName;
-  title: string;
-  body: string;
+  text: string;
   action?: { label: string; onPress: () => void };
 }) {
   return (
     <View style={styles.empty}>
-      <Ionicons name={icon} size={32} color={colors.faint} />
-      <Text style={styles.heading}>{title}</Text>
-      <Text style={[styles.secondary, styles.center]}>{body}</Text>
-      {action ? (
-        <View style={styles.emptyAction}>
-          <Button label={action.label} variant="secondary" onPress={action.onPress} />
-        </View>
-      ) : null}
+      <Text style={styles.emptyText}>{text}</Text>
+      {action ? <Button label={action.label} variant="secondary" onPress={action.onPress} /> : null}
     </View>
   );
 }
 
+/** A flat grey bar where a value will land, at the value's real size. */
+export function Bar({ width, height = 14 }: { width: DimensionValue; height?: number }) {
+  return <View style={[styles.bar, { width, height }]} />;
+}
+
 // ---------- people ----------
 
-export function Avatar({ name, id, size = 56 }: { name: string; id: string | null; size?: number }) {
+export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   return (
-    <View
-      style={[
-        styles.avatar,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: pieceFor(id) },
-      ]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>{initials(name)}</Text>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
+      <Text style={[styles.avatarText, { fontSize: Math.round(size * 0.36) }]}>{initials(name)}</Text>
     </View>
   );
 }
 
 /** A tappable row for settings-style lists. */
 export function ListRow({
-  icon,
   label,
+  value,
   onPress,
   destructive,
 }: {
-  icon: IconName;
   label: string;
-  onPress: () => void;
+  value?: string;
+  onPress?: () => void;
   destructive?: boolean;
 }) {
-  const fg = destructive ? colors.danger : colors.ink;
+  const content = (
+    <>
+      <Text style={[styles.body, styles.flex, destructive && { color: colors.danger }]}>{label}</Text>
+      {value ? <Text style={styles.listValue}>{value}</Text> : null}
+      {onPress && !destructive ? <Ionicons name="chevron-forward" size={16} color={colors.faint} /> : null}
+    </>
+  );
+  if (!onPress) return <View style={styles.listRow}>{content}</View>;
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.listRow, pressed && styles.rowPressed]}
     >
-      <Ionicons name={icon} size={20} color={fg} />
-      <Text style={[styles.body, styles.flex, { color: fg }]}>{label}</Text>
-      {destructive ? null : <Ionicons name="chevron-forward" size={18} color={colors.faint} />}
+      {content}
     </Pressable>
   );
 }
 
+export const rowPressedStyle = { backgroundColor: colors.raised };
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
+  screen: { flex: 1, backgroundColor: colors.ground },
   screenContent: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: space.xl },
   footer: {
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.lineStrong,
+    backgroundColor: colors.ground,
+    borderTopWidth: 1,
+    borderTopColor: colors.rule,
     paddingHorizontal: space.lg,
     paddingTop: space.md,
     gap: space.sm,
   },
-  largeTitle: { gap: space.xs, paddingTop: space.lg },
-  display: { ...type.display, color: colors.ink },
-  subtitle: { ...type.secondary, color: colors.slate },
-  section: { gap: space.md },
-  sectionHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  sectionAction: { ...type.secondary, color: colors.ink, fontWeight: "600" },
-  heading: { ...type.heading, color: colors.ink },
-  group: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.lineStrong,
-    overflow: "hidden",
-  },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  body: { ...type.body, color: colors.ink },
-  secondary: { ...type.secondary, color: colors.slate },
-  muted: { color: colors.slate },
-  caption: { ...type.caption, color: colors.slate },
-  center: { textAlign: "center" },
   flex: { flex: 1 },
+  wordmark: { fontFamily: fonts.wordmark, color: colors.text, letterSpacing: -0.4 },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.md, paddingTop: space.sm },
+  title: { ...type.title, color: colors.text },
+  subtitle: { ...type.body, color: colors.muted, marginTop: 4 },
+  section: { gap: space.sm },
+  sectionLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 24,
+  },
+  sectionLabelText: { ...type.label, color: colors.muted, fontWeight: "500" },
+  card: { backgroundColor: colors.surface, borderRadius: radius.card, overflow: "hidden" },
+  cardPadded: { padding: space.lg, gap: space.md },
+  rule: { height: 1, backgroundColor: colors.rule },
+  body: { ...type.body, color: colors.text },
+  muted: { color: colors.muted },
+  meta: { ...type.label, color: colors.muted },
   inline: { flexDirection: "row", alignItems: "center", gap: space.sm },
   button: {
     minHeight: 50,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.xl,
   },
-  buttonLabel: { fontSize: 17, fontWeight: "600" },
-  pressed: { opacity: 0.75 },
-  disabled: { opacity: 0.4 },
-  pill: {
+  buttonLabel: { fontSize: 16, fontWeight: "600" },
+  textButton: { minHeight: 32, justifyContent: "center" },
+  textButtonLabel: { ...type.body, fontWeight: "600", color: colors.text },
+  pressed: { opacity: 0.7 },
+  disabled: { opacity: 0.35 },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     minHeight: 36,
     paddingHorizontal: 14,
     borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.raised,
   },
-  pillOn: { backgroundColor: colors.ink, borderColor: colors.ink },
-  pillLabel: { fontSize: 15, fontWeight: "500" },
-  pillScroller: { gap: space.sm, paddingHorizontal: space.lg },
-  pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  chipOn: { backgroundColor: colors.primary },
+  chipLabel: { fontSize: 14, fontWeight: "500" },
+  chipCount: { fontSize: 14, fontWeight: "500", ...type.tabular },
+  chipScroller: { gap: space.sm, paddingHorizontal: space.lg },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   bleed: { marginHorizontal: -space.lg, flexGrow: 0 },
   segmented: {
     flexDirection: "row",
-    backgroundColor: "#E3E6E0",
-    borderRadius: radius.sm + 2,
-    padding: 2,
+    backgroundColor: colors.raised,
+    borderRadius: radius.pill,
+    padding: 3,
   },
-  segment: { flex: 1, alignItems: "center", paddingVertical: 7, borderRadius: radius.sm },
-  segmentOn: {
-    backgroundColor: colors.surface,
-    shadowColor: colors.ink,
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentLabel: { fontSize: 14, fontWeight: "500", color: colors.slate },
-  segmentLabelOn: { color: colors.ink, fontWeight: "600" },
-  field: { gap: 6 },
-  fieldLabel: { fontSize: 15, fontWeight: "600", color: colors.ink },
+  segment: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: radius.pill },
+  segmentOn: { backgroundColor: colors.control },
+  segmentLabel: { fontSize: 14, fontWeight: "500", color: colors.muted },
+  segmentLabelOn: { color: colors.text },
+  field: { gap: space.sm },
+  fieldLabel: { ...type.label, fontWeight: "500", color: colors.muted },
   input: {
-    minHeight: 50,
-    backgroundColor: colors.surface,
+    minHeight: 48,
+    backgroundColor: colors.raised,
     borderWidth: 1,
-    borderColor: colors.lineStrong,
-    borderRadius: radius.md,
+    borderColor: colors.raised,
+    borderRadius: radius.inner,
     paddingHorizontal: 14,
-    fontSize: 17,
-    color: colors.ink,
+    fontSize: 16,
+    color: colors.text,
   },
-  inputFocused: { borderColor: colors.ink, borderWidth: 1.5 },
+  inputFocused: { borderColor: colors.muted },
   inputMultiline: { minHeight: 96, paddingTop: 12, textAlignVertical: "top" },
-  reveal: { position: "absolute", right: 14, bottom: 15 },
+  reveal: { position: "absolute", right: 14, bottom: 14 },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    borderRadius: radius.md,
+    backgroundColor: colors.raised,
+    borderRadius: radius.pill,
   },
-  stepButton: { width: 48, height: 46, alignItems: "center", justifyContent: "center" },
+  stepButton: { width: 48, height: 44, alignItems: "center", justifyContent: "center" },
   stepValue: {
-    fontFamily: fonts.display,
-    fontSize: 22,
-    minWidth: 36,
+    ...type.heading,
+    ...type.tabular,
+    minWidth: 32,
     textAlign: "center",
-    color: colors.ink,
+    color: colors.text,
   },
+  pill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    minHeight: 22,
+    justifyContent: "center",
+    borderRadius: radius.pill,
+  },
+  pillLabel: { ...type.small },
   notice: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: space.sm,
     padding: space.md,
-    borderRadius: radius.md,
+    borderRadius: radius.inner,
+    backgroundColor: colors.surface,
   },
-  noticeText: { ...type.secondary, flex: 1 },
-  tag: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
-  tagLabel: { fontSize: 13, fontWeight: "600" },
-  empty: { alignItems: "center", gap: space.sm, paddingVertical: space.xxl, paddingHorizontal: space.xl },
-  emptyAction: { alignSelf: "stretch", marginTop: space.sm },
-  avatar: { alignItems: "center", justifyContent: "center" },
-  avatarText: { fontFamily: fonts.display, color: "#FFFFFF" },
+  noticeText: { ...type.body, color: colors.text, flex: 1 },
+  blockError: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+  },
+  blockErrorText: { ...type.label, color: colors.text, flex: 1 },
+  empty: { padding: space.lg, gap: space.lg },
+  emptyText: { ...type.body, color: colors.muted },
+  bar: { backgroundColor: colors.raised, borderRadius: 4 },
+  avatar: { alignItems: "center", justifyContent: "center", backgroundColor: colors.raised },
+  avatarText: { color: colors.text, fontWeight: "600" },
   listRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -547,5 +617,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     minHeight: 52,
   },
-  rowPressed: { backgroundColor: colors.paper },
+  listValue: { ...type.body, color: colors.muted },
+  rowPressed: rowPressedStyle,
 });

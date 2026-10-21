@@ -164,6 +164,35 @@ export const updateMyProfile = (
 export const setMyGames = (token: string, gameIds: number[]) =>
   request<Profile>("PUT", api("/profiles/me/games"), { token, json: { game_ids: gameIds } });
 
+// ---------- notifications ----------
+
+export type NotificationKind =
+  | "seat_taken"
+  | "waitlist_joined"
+  | "seat_offered"
+  | "waitlist_promoted"
+  | "seat_given_up";
+
+export type Notification = {
+  id: string;
+  kind: NotificationKind | string;
+  title: string;
+  body: string;
+  event_id: number | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+export type Inbox = { items: Notification[]; unread_count: number };
+
+export const getInbox = (token: string) => request<Inbox>("GET", api("/notifications"), { token });
+
+export const markRead = (token: string, id: string) =>
+  request<void>("POST", api(`/notifications/${id}/read`), { token });
+
+export const markAllRead = (token: string) =>
+  request<void>("POST", api("/notifications/read-all"), { token });
+
 // ---------- errors ----------
 
 function detailMessage(d: unknown): string {

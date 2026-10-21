@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getMyProfile, setMyGames, updateMyProfile, type Profile } from "../../src/api";
 import { useApiErrorHandler, useAuth } from "../../src/auth";
 import { useGames } from "../../src/games";
-import { Button, Caption, Field, Notice, Pill, PillWrap, Screen, Section } from "../../src/ui";
+import { Button, Card, Chip, ChipWrap, Field, Meta, Notice, Screen, Section, SectionLabel } from "../../src/ui";
 
 const sameIds = (a: number[], b: number[]) =>
   [...a].sort((x, y) => x - y).join(",") === [...b].sort((x, y) => x - y).join(",");
@@ -95,39 +95,39 @@ export default function EditProfile() {
     >
       <Notice text={error} />
 
-      <Section title="About you">
-        <Field label="Display name" value={name} onChangeText={setName} maxLength={80} />
-        <Field
-          label="Neighborhood"
-          value={area}
-          onChangeText={setArea}
-          placeholder="Park Slope"
-          maxLength={120}
-        />
-        <Field
-          label="Bio"
-          value={bio}
-          onChangeText={setBio}
-          placeholder="What do you like to play?"
-          multiline
-          maxLength={500}
-          hint={`${bio.length} of 500 characters`}
-        />
+      <Section>
+        <SectionLabel label="About you" />
+        <Card padded>
+          <Field label="Display name" value={name} onChangeText={setName} maxLength={80} />
+          <Field label="Neighborhood" value={area} onChangeText={setArea} placeholder="Park Slope" maxLength={120} />
+          <Field
+            label="Bio"
+            value={bio}
+            onChangeText={setBio}
+            placeholder="What do you like to play?"
+            multiline
+            maxLength={500}
+            hint={`${bio.length} of 500 characters`}
+          />
+        </Card>
       </Section>
 
-      <Section title="Games I own">
-        <Caption>Hosts can see which games you could bring.</Caption>
-        <PillWrap>
-          {games.map((g) => (
-            <Pill
-              key={g.id}
-              label={g.name}
-              icon={owned.includes(g.id) ? "checkmark" : undefined}
-              selected={owned.includes(g.id)}
-              onPress={() => toggle(g.id)}
-            />
-          ))}
-        </PillWrap>
+      <Section>
+        <SectionLabel label="Games I own" />
+        <Card padded>
+          <Meta>Hosts can see which games you could bring.</Meta>
+          <ChipWrap>
+            {games.map((g) => (
+              <Chip
+                key={g.id}
+                label={g.name}
+                icon={owned.includes(g.id) ? "checkmark" : undefined}
+                selected={owned.includes(g.id)}
+                onPress={() => toggle(g.id)}
+              />
+            ))}
+          </ChipWrap>
+        </Card>
       </Section>
     </Screen>
   );
