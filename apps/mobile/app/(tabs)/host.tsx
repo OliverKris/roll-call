@@ -7,19 +7,21 @@ import { AREAS, type Area } from "../../src/areas";
 import { useApiErrorHandler, useAuth } from "../../src/auth";
 import { useGames } from "../../src/games";
 import { currentArea } from "../../src/location";
-import { SeatTokens } from "../../src/SeatTokens";
+import { TableView } from "../../src/SeatTokens";
 import { space } from "../../src/theme";
 import {
   Button,
-  Caption,
+  Card,
+  Chip,
+  ChipScroller,
+  ChipWrap,
   Field,
-  LargeTitle,
+  Meta,
   Notice,
-  Pill,
-  PillScroller,
-  PillWrap,
   Screen,
+  ScreenTitle,
   Section,
+  SectionLabel,
   Stepper,
 } from "../../src/ui";
 
@@ -41,11 +43,12 @@ function hourLabel(h: number): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric" });
 }
 
+/** Host answers: what's the table? A game, a time, a place, and how many seats. */
 export default function Host() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, username } = useAuth();
   const handleError = useApiErrorHandler();
-  const { games } = useGames();
+  const { games, byId } = useGames();
   const days = useMemo(() => dayOptions(), []);
 
   const [gameId, setGameId] = useState<number | null>(null);
@@ -59,11 +62,10 @@ export default function Host() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const missing = [
-    !gameId && "a game",
-    !title.trim() && "a title",
-    !placeName.trim() && "a place",
-  ].filter(Boolean) as string[];
+  const game = gameId === null ? undefined : byId.get(gameId);
+  const missing = [!gameId && "a game", !title.trim() && "a title", !placeName.trim() && "a place"].filter(
+    Boolean,
+  ) as string[];
 
   const pickMyLocation = async () => {
     const result = await currentArea();
@@ -75,6 +77,9 @@ export default function Host() {
     // Suggest a title from the game until the host types their own
     if (!title.trim() || games.some((g) => `${g.name} night` === title)) setTitle(`${name} night`);
     setGameId(id);
+    // Start the table at the game's best size, within what the stepper allows
+    const g = byId.get(id);
+    if (g) setCapacity(Math.min(20, Math.max(2, g.max_players)));
   };
 
   const submit = async () => {
@@ -112,83 +117,108 @@ export default function Host() {
     }
   };
 
+  const dayLabel = days.find((d) => d.offset === dayOffset)?.label ?? "";
+  const summary =
+    missing.length > 0
+      ? `Still needs ${missing.join(", ")}.`
+      : `${game?.name} · ${dayLabel}, ${hourLabel(hour)} · ${capacity} seats`;
+
+  const outsideRange = game && (capacity < game.min_players || capacity > game.max_players);
+
   return (
     <Screen
       topInset
-      footer={<Button label="Post game night" onPress={submit} loading={busy} />}
+      footer={
+        <>
+          <Meta>{summary}</Meta>
+          <Button label="Post game night" onPress={submit} loading={busy} disabled={missing.length > 0} />
+        </>
+      }
     >
-      <LargeTitle title="Host a game night" subtitle="Pick a game, a time, and a table. Players nearby can join." />
+      <ScreenTitle title="Host a game night" subtitle="Players nearby see it on Discover and can take a seat." />
 
       <Notice text={error} />
 
-      <Section title="Game">
-        <PillWrap>
-          {games.map((g) => (
-            <Pill
-              key={g.id}
-              label={g.name}
-              selected={gameId === g.id}
-              onPress={() => pickGame(g.id, g.name)}
-            />
-          ))}
-        </PillWrap>
-        <Field label="Title" value={title} onChangeText={setTitle} placeholder="Catan night" maxLength={120} />
-        <Field
-          label="Details (optional)"
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Snacks provided, beginners welcome"
-          multiline
-          maxLength={2000}
-        />
+      <Section>
+        <SectionLabel label="Game" />
+        <Card padded>
+          <ChipWrap>
+            {games.map((g) => (
+              <Chip key={g.id} label={g.name} selected={gameId === g.id} onPress={() => pickGame(g.id, g.name)} />
+            ))}
+          </ChipWrap>
+          <Field label="Title" value={title} onChangeText={setTitle} placeholder="Catan night" maxLength={120} />
+          <Field
+            label="Details (optional)"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Snacks provided, beginners welcome"
+            multiline
+            maxLength={2000}
+          />
+        </Card>
       </Section>
 
-      <Section title="When">
-        <PillScroller>
-          {days.map((d) => (
-            <Pill
-              key={d.offset}
-              label={d.label}
-              selected={dayOffset === d.offset}
-              onPress={() => setDayOffset(d.offset)}
-            />
-          ))}
-        </PillScroller>
-        <PillScroller>
-          {HOURS.map((h) => (
-            <Pill key={h} label={hourLabel(h)} selected={hour === h} onPress={() => setHour(h)} />
-          ))}
-        </PillScroller>
+      <Section>
+        <SectionLabel label="When" />
+        <Card padded>
+          <ChipScroller>
+            {days.map((d) => (
+              <Chip
+                key={d.offset}
+                label={d.label}
+                selected={dayOffset === d.offset}
+                onPress={() => setDayOffset(d.offset)}
+              />
+            ))}
+          </ChipScroller>
+          <ChipScroller>
+            {HOURS.map((h) => (
+              <Chip key={h} label={hourLabel(h)} selected={hour === h} onPress={() => setHour(h)} />
+            ))}
+          </ChipScroller>
+        </Card>
       </Section>
 
-      <Section title="Where">
-        <Field
-          label="Place"
-          value={placeName}
-          onChangeText={setPlaceName}
-          placeholder="Brooklyn Board Game Cafe"
-          maxLength={200}
-        />
-        <Caption>Which area is it in? Nearby players search by area.</Caption>
-        <PillScroller>
-          <Pill label="Near me" icon="navigate" selected={area.label === "Near me"} onPress={pickMyLocation} />
-          {AREAS.map((a) => (
-            <Pill key={a.label} label={a.label} selected={area.label === a.label} onPress={() => setArea(a)} />
-          ))}
-        </PillScroller>
+      <Section>
+        <SectionLabel label="Where" />
+        <Card padded>
+          <Field
+            label="Place"
+            value={placeName}
+            onChangeText={setPlaceName}
+            placeholder="Brooklyn Board Game Cafe"
+            maxLength={200}
+          />
+          <Meta>Area. Nearby players search by area.</Meta>
+          <ChipScroller>
+            <Chip label="Near me" icon="navigate-outline" selected={area.label === "Near me"} onPress={pickMyLocation} />
+            {AREAS.map((a) => (
+              <Chip key={a.label} label={a.label} selected={area.label === a.label} onPress={() => setArea(a)} />
+            ))}
+          </ChipScroller>
+        </Card>
       </Section>
 
-      <Section title="Seats">
-        <View style={styles.seats}>
-          <Stepper value={capacity} min={2} max={20} onChange={setCapacity} />
-          <SeatTokens taken={1} capacity={capacity} size="lg" />
-        </View>
-        <Caption>Includes your seat. Once the table is full, new players join a waitlist.</Caption>
+      <Section>
+        <SectionLabel label="Seats" />
+        <Card padded>
+          <View style={styles.seatsHead}>
+            <Stepper value={capacity} min={2} max={20} onChange={setCapacity} />
+            <Meta>Including yours</Meta>
+          </View>
+          <TableView taken={1} capacity={capacity} centre={game?.name} hostName={username} />
+          <Meta>
+            {outsideRange
+              ? `${game.name} is made for ${game.min_players}–${game.max_players} players.`
+              : "Once every seat is taken, new players join a waitlist and move up in order."}
+          </Meta>
+        </Card>
       </Section>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  seats: { gap: space.lg },
+  seatsHead: { flexDirection: "row", alignItems: "center", gap: space.lg },
 });
