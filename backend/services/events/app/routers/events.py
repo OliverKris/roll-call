@@ -39,7 +39,7 @@ async def create_event(data: EventCreate, user: UserDep, session: SessionDep, ca
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"message": "Game does not exist", "missing_game_ids": missing},
         )
-    return await repository.create_event(session, user.sub, data)
+    return await repository.create_event(session, user.sub, data, host_name=user.display_name)
 
 
 @router.get("/nearby", response_model=list[NearbyEvent])
@@ -87,7 +87,7 @@ async def get_my_rsvp(event_id: int, user: UserDep, session: SessionDep):
 @router.post("/{event_id}/rsvp", response_model=RsvpOut)
 async def join_event(event_id: int, user: UserDep, session: SessionDep):
     try:
-        return await repository.join_event(session, event_id, user.sub)
+        return await repository.join_event(session, event_id, user.sub, user.display_name)
     except EventNotFoundError:
         raise NOT_FOUND from None
     except EventNotJoinableError as exc:
@@ -99,7 +99,7 @@ async def join_event(event_id: int, user: UserDep, session: SessionDep):
 @router.delete("/{event_id}/rsvp", status_code=status.HTTP_204_NO_CONTENT)
 async def leave_event(event_id: int, user: UserDep, session: SessionDep):
     try:
-        await repository.leave_event(session, event_id, user.sub)
+        await repository.leave_event(session, event_id, user.sub, user.display_name)
     except EventNotFoundError:
         raise NOT_FOUND from None
     except HostCannotLeaveError:
