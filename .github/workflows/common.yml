@@ -29,7 +29,7 @@ defaults:
 jobs:
     lint-and-test:
         runs-on: ubuntu-latest
-        timeout-minutes: 5
+        timeout-minutes: 10
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-python@v5
@@ -41,4 +41,5 @@ jobs:
                   uv pip install --system . -r requirements-dev.txt
             - run: ruff check .
             - run: ruff format --check .
-            - run: python -m pytest -v
+            - name: Run tests (outbox tests start Postgres with Testcontainers)
+              run: python -m pytest -v

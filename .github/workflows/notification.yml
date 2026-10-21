@@ -1,0 +1,56 @@
+name: notification-service
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "backend/services/notification/**"
+            - "backend/libs/common/**"
+            - ".github/workflows/notification.yml"
+    pull_request:
+        branches: [main]
+        paths:
+            - "backend/services/notification/**"
+            - "backend/libs/common/**"
+            - ".github/workflows/notification.yml"
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    PYTHON_VERSION: "3.12"
+
+defaults:
+    run:
+        working-directory: backend/services/notification
+
+jobs:
+    lint:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - run: pip install ruff==0.17.1
+            - run: ruff check .
+            - run: ruff format --check .
+
+    unit:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+            - name: Install dependencies
+              run: |
+                  pip install uv
+                  uv pip install --system ../../libs/common
+                  uv pip install
