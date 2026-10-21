@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from geoalchemy2 import Geography
+from rollcall_common.outbox import make_outbox_table
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -82,5 +83,11 @@ class Rsvp(Base):
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # Name at the time of joining, so messages about this RSVP can say who it was
+    user_name: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(16))
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# Messages waiting to be published to Kafka, written in the same transaction as the change
+outbox = make_outbox_table(Base.metadata)

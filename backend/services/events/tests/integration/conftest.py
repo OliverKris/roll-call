@@ -7,7 +7,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from testcontainers.community.postgres import PostgresContainer
 
 from app.db import get_session
 from app.main import app
@@ -15,22 +14,34 @@ from app.main import app
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 
 
+def migrate(url: str) -> None:
+    subprocess.run(
+        ["alembic", "upgrade", "head"],
+        cwd=SERVICE_ROOT,
+        env={**os.environ, "DATABASE_URL": url},
+        check=True,
+    )
+
+
 @pytest.fixture(scope="session")
 def database_url():
+    """A migrated PostGIS database: TEST_DATABASE_URL if set, otherwise Testcontainers."""
+    url = os.getenv("TEST_DATABASE_URL")
+    if url:
+        migrate(url)
+        yield url
+        return
+    from testcontainers.community.postgres import PostgresContainer
+
     with PostgresContainer("postgis/postgis:16-3.4", driver="asyncpg") as pg:
         url = pg.get_connection_url()
-        # Run the real migration in a subprocess, exactly as the container does
-        subprocess.run(
-            ["alembic", "upgrade", "head"],
-            cwd=SERVICE_ROOT,
-            env={**os.environ, "DATABASE_URL": url},
-            check=True,
-        )
+        migrate(url)
         yield url
 
 
 @pytest_asyncio.fixture
 async def session(database_url):
+    """One test's session; everything it does is rolled back afterwards."""
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
         outer = await conn.begin()
@@ -43,7 +54,7 @@ async def session(database_url):
             yield session
         finally:
             await session.close()
-            await outer.rollback()  # undo everything this test did
+            await outer.rollback()
     await engine.dispose()
 
 
@@ -64,5 +75,5 @@ async def committing_sessions(database_url):
     engine = create_async_engine(database_url)
     yield async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE rsvps, events RESTART IDENTITY CASCADE"))
+        await conn.execute(text("TRUNCATE outbox, rsvps, events RESTART IDENTITY CASCADE"))
     await engine.dispose()

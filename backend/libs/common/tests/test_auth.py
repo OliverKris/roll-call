@@ -63,3 +63,16 @@ def test_dependency_returns_user_for_good_header():
     r = client.get("/whoami", headers={"X-Userinfo": make_userinfo_header(sub="abc")})
     assert r.status_code == 200
     assert r.json()["sub"] == "abc"
+
+
+@pytest.mark.parametrize(
+    "claims, expected",
+    [
+        ({"name": "Alice Tester", "preferred_username": "alice"}, "Alice Tester"),
+        ({"preferred_username": "alice"}, "alice"),
+        ({"email": "bob@example.com"}, "bob"),
+        ({}, "Someone"),
+    ],
+)
+def test_display_name_falls_back_through_claims(claims, expected):
+    assert CurrentUser(sub="abc", **claims).display_name == expected

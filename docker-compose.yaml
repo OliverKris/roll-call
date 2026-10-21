@@ -1,4 +1,5 @@
 services:
+  # ---------- gateway ----------
   apisix:
     image: apache/apisix:3.11.0-debian
     container_name: apache-apisix
@@ -12,6 +13,7 @@ services:
     networks:
       - api-net
 
+  # ---------- identity ----------
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.1
     container_name: keycloak
@@ -39,12 +41,13 @@ services:
     networks:
       - api-net
 
-  httpbin: # debug helper: echoes back the headers it receives
+  httpbin: # debug helper behind the debug-headers route; remove both before you finish
     image: mccutchen/go-httpbin
     container_name: httpbin
     networks:
       - api-net
 
+  # ---------- catalog ----------
   catalog-db:
     image: postgres:16-alpine
     container_name: catalog-db
@@ -77,6 +80,7 @@ services:
     networks:
       - api-net
 
+  # ---------- profile ----------
   profile-db:
     image: postgres:16-alpine
     container_name: profile-db
@@ -114,6 +118,7 @@ services:
     networks:
       - api-net
 
+  # ---------- events ----------
   events-db:
     image: postgis/postgis:16-3.4
     platform: linux/amd64
@@ -144,14 +149,109 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://events:events@events-db:5432/events
       CATALOG_URL: http://catalog:8000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092 # NEW: relays outbox messages to Kafka
     depends_on:
       events-db:
         condition: service_healthy
       catalog:
         condition: service_started
+      kafka-init: # NEW: wait until the topics exist
+        condition: service_completed_successfully
     networks:
       - api-net
 
+  # ---------- messaging (NEW) ----------
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: kafka
+    restart: always
+    environment:
+      # Single node acting as both broker and controller (KRaft mode, no ZooKeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:29092
+      # Containers use kafka:9092; tools on your Mac use localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+    networks:
+      - api-net
+
+  # Creates the topics once Kafka is up, then exits
+  kafka-init:
+    image: apache/kafka:3.9.1
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for t in rollcall.rsvp rollcall.rsvp.dead-letter; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists --topic "$$t" --partitions 3 --replication-factor 1
+        done
+    networks:
+      - api-net
+
+  # ---------- notification (NEW) ----------
+  notification-db:
+    image: postgres:16-alpine
+    container_name: notification-db
+    restart: always
+    environment:
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification
+      POSTGRES_DB: notification
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notification"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - api-net
+
+  notification:
+    build:
+      context: ./backend
+      dockerfile: services/notification/Dockerfile
+    container_name: notification-service
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://notification:notification@notification-db:5432/notification
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - api-net
+
+  # ---------- web ----------
   frontend:
     build: ./frontend
     container_name: react-frontend
@@ -161,11 +261,12 @@ services:
     networks:
       - api-net
 
+networks:
+  api-net:
+    driver: bridge
+
 volumes:
   catalog-db-data:
   profile-db-data:
   events-db-data:
-
-networks:
-  api-net:
-    driver: bridge
+  notification-db-data: # NEW

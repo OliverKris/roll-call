@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from geoalchemy2 import Geography, WKTElement
+from rollcall_common.messages import RSVP_TOPIC, Envelope, RsvpChange, RsvpMessageType
+from rollcall_common.outbox import enqueue
 from sqlalchemy import cast, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,7 @@ from app.models import EventStatus, RsvpStatus
 from app.schemas.event import EventCreate
 
 MAX_ATTEMPTS = 3
+SOURCE = "events-service"
 
 
 class EventNotFoundError(Exception):
@@ -36,7 +39,36 @@ def _touch(event: models.Event) -> None:
     event.updated_at = func.now()
 
 
-async def create_event(session: AsyncSession, host_user_id: str, data: EventCreate) -> models.Event:
+async def _announce(
+    session: AsyncSession,
+    type_: RsvpMessageType,
+    event: models.Event,
+    *,
+    user_id: str,
+    user_name: str | None,
+    status: str,
+) -> None:
+    """Queue a message about this RSVP change in the current transaction."""
+    change = RsvpChange(
+        event_id=event.id,
+        event_title=event.title,
+        host_user_id=event.host_user_id,
+        user_id=user_id,
+        user_name=user_name or "A player",
+        status=status,
+    )
+    await enqueue(
+        session,
+        models.outbox,
+        topic=RSVP_TOPIC,
+        key=str(event.id),
+        envelope=Envelope(type=type_, source=SOURCE, data=change.model_dump()),
+    )
+
+
+async def create_event(
+    session: AsyncSession, host_user_id: str, data: EventCreate, host_name: str | None = None
+) -> models.Event:
     event = models.Event(
         host_user_id=host_user_id,
         **data.model_dump(),
@@ -46,7 +78,14 @@ async def create_event(session: AsyncSession, host_user_id: str, data: EventCrea
     )
     session.add(event)
     await session.flush()
-    session.add(models.Rsvp(event_id=event.id, user_id=host_user_id, status=RsvpStatus.GOING))
+    session.add(
+        models.Rsvp(
+            event_id=event.id,
+            user_id=host_user_id,
+            user_name=host_name,
+            status=RsvpStatus.GOING,
+        )
+    )
     await session.commit()
     await session.refresh(event)
     return event
@@ -54,6 +93,10 @@ async def create_event(session: AsyncSession, host_user_id: str, data: EventCrea
 
 async def get_event(session: AsyncSession, event_id: int) -> models.Event | None:
     return await session.get(models.Event, event_id)
+
+
+async def get_rsvp(session: AsyncSession, event_id: int, user_id: str) -> models.Rsvp | None:
+    return await session.get(models.Rsvp, (event_id, user_id))
 
 
 async def find_nearby(
@@ -75,86 +118,6 @@ async def find_nearby(
     return [(event, dist) for event, dist in result.all()]
 
 
-async def join_event(session: AsyncSession, event_id: int, user_id: str) -> models.Rsvp:
-    for _ in range(MAX_ATTEMPTS):
-        event = await session.get(models.Event, event_id, populate_existing=True)
-        if event is None:
-            raise EventNotFoundError(event_id)
-        if event.status != EventStatus.SCHEDULED:
-            raise EventNotJoinableError("Event is cancelled")
-        if event.starts_at <= datetime.now(UTC):
-            raise EventNotJoinableError("Event has already started")
-
-        existing = await session.get(models.Rsvp, (event_id, user_id), populate_existing=True)
-        if existing is not None:
-            return existing  # joining twice is a no-op
-
-        if event.seats_taken < event.capacity:
-            event.seats_taken += 1
-            rsvp_status = RsvpStatus.GOING
-        else:
-            rsvp_status = RsvpStatus.WAITLISTED
-        _touch(event)
-
-        rsvp = models.Rsvp(event_id=event_id, user_id=user_id, status=rsvp_status)
-        session.add(rsvp)
-        try:
-            await session.commit()
-        except (StaleDataError, IntegrityError):
-            # Someone changed the event (or this user double-submitted) between
-            # our read and our write. Start over from fresh data.
-            await session.rollback()
-            continue
-        await session.refresh(rsvp)
-        return rsvp
-
-    raise TooMuchContentionError(event_id)
-
-
-async def leave_event(session: AsyncSession, event_id: int, user_id: str) -> None:
-    for _ in range(MAX_ATTEMPTS):
-        event = await session.get(models.Event, event_id, populate_existing=True)
-        if event is None:
-            raise EventNotFoundError(event_id)
-        if user_id == event.host_user_id:
-            raise HostCannotLeaveError(event_id)
-
-        rsvp = await session.get(models.Rsvp, (event_id, user_id), populate_existing=True)
-        if rsvp is None:
-            return  # leaving twice is a no-op
-
-        was_going = rsvp.status == RsvpStatus.GOING
-        await session.delete(rsvp)
-
-        if was_going:
-            next_in_line = await session.scalar(
-                select(models.Rsvp)
-                .where(
-                    models.Rsvp.event_id == event_id,
-                    models.Rsvp.status == RsvpStatus.WAITLISTED,
-                )
-                .order_by(models.Rsvp.joined_at, models.Rsvp.user_id)
-                .limit(1)
-            )
-            if next_in_line is not None:
-                next_in_line.status = RsvpStatus.GOING  # seat passes on; count unchanged
-            else:
-                event.seats_taken -= 1
-        _touch(event)
-
-        try:
-            await session.commit()
-            return
-        except StaleDataError:
-            await session.rollback()
-
-    raise TooMuchContentionError(event_id)
-
-
-async def get_rsvp(session: AsyncSession, event_id: int, user_id: str) -> models.Rsvp | None:
-    return await session.get(models.Rsvp, (event_id, user_id))
-
-
 async def list_user_events(
     session: AsyncSession, user_id: str
 ) -> Sequence[tuple[models.Event, str]]:
@@ -167,3 +130,113 @@ async def list_user_events(
     )
     result = await session.execute(stmt)
     return [(event, status) for event, status in result.all()]
+
+
+async def join_event(
+    session: AsyncSession, event_id: int, user_id: str, user_name: str | None = None
+) -> models.Rsvp:
+    for _ in range(MAX_ATTEMPTS):
+        event = await session.get(models.Event, event_id, populate_existing=True)
+        if event is None:
+            raise EventNotFoundError(event_id)
+        if event.status != EventStatus.SCHEDULED:
+            raise EventNotJoinableError("Event is cancelled")
+        if event.starts_at <= datetime.now(UTC):
+            raise EventNotJoinableError("Event has already started")
+
+        existing = await session.get(models.Rsvp, (event_id, user_id), populate_existing=True)
+        if existing is not None:
+            return existing  # joining twice is a no-op, and sends no message
+
+        if event.seats_taken < event.capacity:
+            event.seats_taken += 1
+            rsvp_status = RsvpStatus.GOING
+        else:
+            rsvp_status = RsvpStatus.WAITLISTED
+        _touch(event)
+
+        rsvp = models.Rsvp(
+            event_id=event_id, user_id=user_id, user_name=user_name, status=rsvp_status
+        )
+        session.add(rsvp)
+        try:
+            # The message is written in the same transaction, so it exists only if the join does
+            await _announce(
+                session,
+                "rsvp.joined",
+                event,
+                user_id=user_id,
+                user_name=user_name,
+                status=rsvp_status,
+            )
+            await session.commit()
+        except (StaleDataError, IntegrityError):
+            # Someone changed the event (or this user double-submitted) between
+            # our read and our write. Start over from fresh data.
+            await session.rollback()
+            continue
+        await session.refresh(rsvp)
+        return rsvp
+
+    raise TooMuchContentionError(event_id)
+
+
+async def leave_event(
+    session: AsyncSession, event_id: int, user_id: str, user_name: str | None = None
+) -> None:
+    for _ in range(MAX_ATTEMPTS):
+        event = await session.get(models.Event, event_id, populate_existing=True)
+        if event is None:
+            raise EventNotFoundError(event_id)
+        if user_id == event.host_user_id:
+            raise HostCannotLeaveError(event_id)
+
+        rsvp = await session.get(models.Rsvp, (event_id, user_id), populate_existing=True)
+        if rsvp is None:
+            return  # leaving twice is a no-op
+
+        was_status = rsvp.status
+        leaver_name = user_name or rsvp.user_name
+        await session.delete(rsvp)
+
+        promoted = None
+        if was_status == RsvpStatus.GOING:
+            promoted = await session.scalar(
+                select(models.Rsvp)
+                .where(
+                    models.Rsvp.event_id == event_id,
+                    models.Rsvp.status == RsvpStatus.WAITLISTED,
+                )
+                .order_by(models.Rsvp.joined_at, models.Rsvp.user_id)
+                .limit(1)
+            )
+            if promoted is not None:
+                promoted.status = RsvpStatus.GOING  # seat passes on; count unchanged
+            else:
+                event.seats_taken -= 1
+        _touch(event)
+
+        try:
+            await _announce(
+                session,
+                "rsvp.left",
+                event,
+                user_id=user_id,
+                user_name=leaver_name,
+                status=was_status,
+            )
+            if promoted is not None:
+                await _announce(
+                    session,
+                    "rsvp.promoted",
+                    event,
+                    user_id=promoted.user_id,
+                    user_name=promoted.user_name,
+                    status=RsvpStatus.GOING,
+                )
+            await session.commit()
+            return
+        except StaleDataError:
+            await session.rollback()
+
+    raise TooMuchContentionError(event_id)
